@@ -132,6 +132,8 @@ local function render_image(temp_html_path, output_path, title, icon, icon_color
 		title,
 		"--background",
 		config.opts.background,
+		"--font",
+		config.opts.font,
 		"--icon",
 		icon or "",
 		"--icon-color",

@@ -6,6 +6,7 @@ M.defaults = {
 	copy_to_clipboard = false,
 	output_dir = nil,
 	background = "#A5A6F6",
+	font = "",
 	line_numbers = "absolute_from_1",
 	highlight_current_line = false,
 	diagnostics_on = false,

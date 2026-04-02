@@ -134,21 +134,21 @@ def main() -> int:
     parser.add_argument("--icon", default="", help="file icon glyph for the titlebar.")
     parser.add_argument("--icon-color", default="", help="hex for the icon color.")
     parser.add_argument("--background", default="#A5A6F6", help="hex for background.")
+    parser.add_argument("--font", default=(Path(__file__).parent.parent / "SymbolsNerdFontMono-Regular.ttf"), help="font to be used.")
     args = parser.parse_args()
 
     input_path: Path = args.input_path.expanduser()
     output_path: Path = args.output_path.expanduser()
 
     url = input_path.resolve().as_uri()
-
-    icon_font_url = (Path(__file__).parent.parent / "SymbolsNerdFontMono-Regular.ttf").as_uri()
+    font_url = Path(args.font).expanduser().resolve().as_uri()
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(device_scale_factor=SCALE)
 
         page.goto(url)
-        page.add_style_tag(content=get_extra_css(args.background, icon_font_url))
+        page.add_style_tag(content=get_extra_css(args.background, font_url))
 
         page.evaluate(
             """
