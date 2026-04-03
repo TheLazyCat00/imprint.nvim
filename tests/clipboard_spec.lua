@@ -12,29 +12,47 @@ end
 local function with_mocks(run)
 	local orig_exec = vim.fn.executable
 	local orig_has = vim.fn.has
-	local orig_wayland = vim.env.WAYLAND_DISPLAY
 	local orig_sys = vim.system
+	local orig_wayland = vim.env.WAYLAND_DISPLAY
+	local orig_wsl_distro = vim.env.WSL_DISTRO_NAME
+	local orig_wsl_interop = vim.env.WSL_INTEROP
+
+	vim.env.WSL_DISTRO_NAME = nil
+	vim.env.WSL_INTEROP = nil
+	vim.env.WAYLAND_DISPLAY = nil
 
 	local executable_map = {}
+	local has_map = {}
+
 	vim.fn.executable = function(name)
 		return executable_map[name] or 0
 	end
+
 	vim.fn.has = function(feature)
-		if feature == "mac" then return 0 end
-		return orig_has(feature)
+		return has_map[feature] or 0
 	end
+
 	vim.system = function()
 		return { wait = function() return { code = 0, stderr = "" } end }
 	end
 
 	local ctx = {
+		set_has = function(feature, value)
+			has_map[feature] = value and 1 or 0
+		end,
 		set_executable = function(name, value)
 			executable_map[name] = value and 1 or 0
 		end,
 		set_is_mac = function(value)
-			vim.fn.has = function(feature)
-				if feature == "mac" then return value and 1 or 0 end
-				return orig_has(feature)
+			has_map["mac"] = value and 1 or 0
+		end,
+		set_is_wsl = function(value)
+			has_map["wsl"] = value and 1 or 0
+			if value then
+				vim.env.WSL_DISTRO_NAME = "test-distro"
+			else
+				vim.env.WSL_DISTRO_NAME = nil
+				vim.env.WSL_INTEROP = nil
 			end
 		end,
 		set_wayland = function(value)
@@ -49,12 +67,12 @@ local function with_mocks(run)
 
 	vim.fn.executable = orig_exec
 	vim.fn.has = orig_has
-	vim.env.WAYLAND_DISPLAY = orig_wayland
 	vim.system = orig_sys
+	vim.env.WAYLAND_DISPLAY = orig_wayland
+	vim.env.WSL_DISTRO_NAME = orig_wsl_distro
+	vim.env.WSL_INTEROP = orig_wsl_interop
 
-	if not ok then
-		error(err)
-	end
+	if not ok then error(err) end
 end
 
 with_mocks(function(ctx)
