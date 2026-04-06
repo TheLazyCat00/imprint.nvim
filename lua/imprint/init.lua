@@ -60,11 +60,12 @@ local function check_deps(on_complete)
 			"pip",
 			"install",
 			"playwright",
+			"pymupdf",
 		}
 
 		run_job(pip_cmd, function(pip_code, _, pip_err)
 			if pip_code ~= 0 then
-				notify("failed to install playwright:\n" .. table.concat(pip_err, "\n"),
+				notify("failed to install dependencies:\n" .. table.concat(pip_err, "\n"),
 					vim.log.levels.ERROR)
 				return
 			end
@@ -86,7 +87,7 @@ end
 
 local function do_copy_to_clipboard(image_path)
 	if not config.opts.copy_to_clipboard then return false end
-	local copied, err = clipboard.copy_image(image_path, clipboard.detect_provider())
+	local copied, err = clipboard.copy_file(image_path, clipboard.detect_provider())
 	if copied then
 		return true
 	else
@@ -107,8 +108,9 @@ local function get_icon(buf_path)
 end
 
 local function plan_output(buf_path, clipboard_only, open_after)
+	local ext = "." .. (config.opts.type or "png")
 	if clipboard_only then
-		return { path = vim.fn.tempname() .. ".png", cleanup = not open_after }
+		return { path = vim.fn.tempname() .. ext, cleanup = not open_after }
 	end
 	local output_dir
 	if config.opts.output_dir == nil then
@@ -118,7 +120,7 @@ local function plan_output(buf_path, clipboard_only, open_after)
 	end
 	vim.fn.mkdir(output_dir, "p")
 	local out_filename = "imprint_" ..
-	    vim.fn.fnamemodify(buf_path, ":t:r") .. "_" .. os.date("%Y%m%d%H%M%S") .. ".png"
+	    vim.fn.fnamemodify(buf_path, ":t:r") .. "_" .. os.date("%Y%m%d%H%M%S") .. ext
 	return { path = output_dir .. "/" .. out_filename, cleanup = false }
 end
 
@@ -136,6 +138,8 @@ local function render_image(temp_html_path, output_path, title, icon, icon_color
 		icon or "",
 		"--icon-color",
 		icon_color or "",
+		"--type",
+		config.opts.type
 	}
 	local stdout = {}
 	local stderr = {}

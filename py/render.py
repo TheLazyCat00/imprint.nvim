@@ -1,5 +1,6 @@
 import sys
 import argparse
+import tempfile
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -129,11 +130,12 @@ def get_extra_css(outer_bg: str, icon_font_url: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("input_path", type=Path, help="path for the input HTML file.")
-    parser.add_argument("output_path", type=Path, help="pth for the output PNG file.")
+    parser.add_argument("output_path", type=Path, help="path for the output PNG or SVG file.")
     parser.add_argument("--title", default="", help="title for the window.")
     parser.add_argument("--icon", default="", help="file icon glyph for the titlebar.")
     parser.add_argument("--icon-color", default="", help="hex for the icon color.")
     parser.add_argument("--background", default="#A5A6F6", help="hex for background.")
+    parser.add_argument("--type", default="png", help="type of the output image, png/svg")
     args = parser.parse_args()
 
     input_path: Path = args.input_path.expanduser()
@@ -220,8 +222,32 @@ def main() -> int:
             {"title": args.title, "icon": args.icon, "iconColor": args.icon_color},
         )
 
-        stage_element = page.locator("#stage")
-        stage_element.screenshot(path=str(output_path))
+        if args.type == "svg":
+            import fitz  # pymupdf
+
+            dims = page.evaluate("""
+                () => {
+                    const el = document.getElementById("stage");
+                    const r = el.getBoundingClientRect();
+                    return { width: r.width, height: r.height };
+                }
+            """)
+            with tempfile.TemporaryDirectory() as tmp:
+                pdf_path = Path(tmp) / "output.pdf"
+                page.pdf(
+                    path=str(pdf_path),
+                    width=f"{dims['width']}px",
+                    height=f"{dims['height']}px",
+                    print_background=True,
+                )
+                doc = fitz.open(str(pdf_path))
+                svg_text = doc[0].get_svg_image()
+                doc.close()
+                output_path.write_text(svg_text, encoding="utf-8")
+        else:
+            stage_element = page.locator("#stage")
+            stage_element.screenshot(path=str(output_path))
+
         browser.close()
 
     return 0
