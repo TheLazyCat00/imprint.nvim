@@ -108,7 +108,7 @@ local function get_icon(buf_path)
 end
 
 local function plan_output(buf_path, clipboard_only, open_after)
-	local ext = "." .. (config.opts.type or "png")
+	local ext = "." .. config.opts.type
 	if clipboard_only then
 		return { path = vim.fn.tempname() .. ext, cleanup = not open_after }
 	end
@@ -171,6 +171,8 @@ local function open_image(output_path)
 	return true
 end
 
+local pending_cleanup = {}
+
 local function finalize_output(output_path, cleanup, open_after)
 	local copy_success = do_copy_to_clipboard(output_path)
 	local opened = open_after and open_image(output_path) or false
@@ -179,7 +181,7 @@ local function finalize_output(output_path, cleanup, open_after)
 	if copy_success then table.insert(message_parts, "copied to clipboard") end
 	if opened then table.insert(message_parts, "image is opened") end
 	notify(table.concat(message_parts, "\n"))
-	if cleanup then vim.fn.delete(output_path) end
+	if cleanup then table.insert(pending_cleanup, output_path) end
 end
 
 local function slice_html_pre_block(html_content, range)
@@ -353,6 +355,16 @@ end
 
 function M.setup(user_opts)
 	config.setup(user_opts)
+	local group = vim.api.nvim_create_augroup("ImprintCleanup", { clear = true })
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = group,
+		callback = function()
+			for _, path in ipairs(pending_cleanup) do
+				vim.fn.delete(path)
+			end
+			pending_cleanup = {}
+		end,
+	})
 	vim.api.nvim_create_user_command('Imprint', M.imprint_command, {
 		nargs = '*',
 		range = true,
