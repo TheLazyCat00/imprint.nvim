@@ -107,13 +107,13 @@ with_mocks(function(ctx)
 		return { wait = function() return { code = 0, stderr = "" } end }
 	end)
 
-	local ok, err = clipboard.copy_image(temp_path, "wayland")
+	local ok, err = clipboard.copy_file(temp_path, "wayland")
 	assert_eq(ok, true)
 	assert_eq(err, nil)
 	assert_eq(captured.cmd[1], "wl-copy")
 	assert_eq(captured.cmd[2], "--type")
-	assert_eq(captured.cmd[3], "image/png")
-	assert_eq(captured.opts.stdin, "PNG\0DATA")
+	assert_eq(captured.cmd[3], "text/uri-list")
+	assert_eq(captured.opts.stdin, "file://" .. vim.fn.fnamemodify(temp_path, ":p"))
 	assert_eq(captured.opts.text, false)
 
 	vim.fn.delete(temp_path)
@@ -126,7 +126,7 @@ with_mocks(function(ctx)
 		return { wait = function() return { code = 0, stderr = "" } end }
 	end)
 
-	local ok, err = clipboard.copy_image("/tmp/test image.png", "macos")
+	local ok, err = clipboard.copy_file("/tmp/test image.png", "macos")
 	assert_eq(ok, true)
 	assert_eq(err, nil)
 	assert_eq(called[1], "osascript")
