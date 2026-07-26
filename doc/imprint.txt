@@ -24,11 +24,17 @@ require('imprint').setup({
   copy_to_clipboard = false,
   output_dir = nil,
   background = "#A5A6F6",
+  font = nil,
   line_numbers = "absolute_from_1",
   highlight_current_line = false,
   diagnostics_on = false,
   icons_on = true,
 })
+
+font is a font family that must be installed on the system, for example
+"JetBrains Mono". When nil, the default monospace font is used. The titlebar
+icon is always drawn with the bundled nerd font, so it renders regardless of
+the font set here.
 
 DEPENDENCIES                                                         *imprint-deps*
 

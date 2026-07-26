@@ -10,7 +10,7 @@ end
 
 do
 	local path = debug.getinfo(1, "S").source:sub(2):match("(.*/)")
-	M.plugin_path = path .. "../../"
+	M.plugin_path = path .. "../.."
 end
 M.data_path = vim.fn.stdpath("data") .. "/imprint.nvim"
 M.bin_path = "/bin"
@@ -69,7 +69,7 @@ local function check_deps(on_complete)
 				return
 			end
 
-			local playwright_cmd = { M.venv_path .. M.bin_path.. "/playwright", "install", "chromium" }
+			local playwright_cmd = { M.venv_path .. M.bin_path .. "/playwright", "install", "chromium" }
 
 			run_job(playwright_cmd, function(pw_code, _, pw_err)
 				if pw_code ~= 0 then
@@ -124,7 +124,7 @@ end
 
 local function render_image(temp_html_path, output_path, title, icon, icon_color, on_complete)
 	local cmd_args = {
-		M.venv_path .. M.bin_path.. "/python",
+		M.venv_path .. M.bin_path .. "/python",
 		M.plugin_path .. "/py/render.py",
 		temp_html_path,
 		output_path,
@@ -132,16 +132,17 @@ local function render_image(temp_html_path, output_path, title, icon, icon_color
 		title,
 		"--background",
 		config.opts.background,
-		"--font",
-		config.opts.font,
 		"--icon",
 		icon or "",
 		"--icon-color",
 		icon_color or "",
 	}
+	if config.opts.font and config.opts.font ~= "" then
+		vim.list_extend(cmd_args, { "--font", config.opts.font })
+	end
 	local stdout = {}
 	local stderr = {}
-	vim.fn.jobstart(cmd_args, {
+	local job_id = vim.fn.jobstart(cmd_args, {
 		stdout_buffered = true,
 		stderr_buffered = true,
 		on_stdout = function(_, data)
@@ -156,6 +157,9 @@ local function render_image(temp_html_path, output_path, title, icon, icon_color
 			on_complete(code, out, err)
 		end,
 	})
+	if job_id <= 0 then
+		on_complete(1, "", "failed to start: " .. table.concat(cmd_args, " "))
+	end
 end
 
 local function open_image(output_path)

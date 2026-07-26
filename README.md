@@ -89,6 +89,13 @@ require('imprint').setup({
 	-- hex-code for the background outside the code window
 	background = "#A5A6F6",
 
+	-- font family for the code inside the window
+	-- must be installed on the system, e.g. "JetBrains Mono"
+	-- when nil, the default monospace font is used
+	-- the titlebar icon always uses the bundled nerd font,
+	-- so it renders no matter which font is set here
+	font = nil,
+
 	-- line number visibility
 	-- true:              current settings
 	-- false:             no line numbers

@@ -1,4 +1,3 @@
-import sys
 import argparse
 from pathlib import Path
 
@@ -9,7 +8,20 @@ LINE_HEIGHT = 1.25
 SCALE = 2
 
 
-def get_extra_css(outer_bg: str, icon_font_url: str) -> str:
+def css_font_stack(font_family: str) -> str:
+    """Build the font-family value for the code window.
+
+    Falls back to the browser monospace font when no family is configured, so
+    the rendering keeps working without any font setup.
+    """
+    family = " ".join(font_family.split())
+    if not family:
+        return "monospace"
+    escaped = family.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}", monospace'
+
+
+def get_extra_css(outer_bg: str, icon_font_url: str, font_family: str) -> str:
     padding_px = 40
     window_radius = 14
     titlebar_height = 36
@@ -29,6 +41,8 @@ def get_extra_css(outer_bg: str, icon_font_url: str) -> str:
     }}
         """
 
+    font_stack = css_font_stack(font_family)
+
     return f"""
     html, body {{
       margin: 0;
@@ -40,7 +54,7 @@ def get_extra_css(outer_bg: str, icon_font_url: str) -> str:
     }}
 
     * {{
-      font-family: "ImprintNerdSymbols", monospace;
+      font-family: {font_stack};
     }}
 
     #stage {{
@@ -96,7 +110,7 @@ def get_extra_css(outer_bg: str, icon_font_url: str) -> str:
       flex: 0 0 auto;
       font-size: {title_icon_size}px;
       line-height: 1;
-      font-family: "ImprintNerdSymbols";
+      font-family: "ImprintNerdSymbols", monospace;
     }}
     #file-icon:empty {{
       display: none;
@@ -129,26 +143,27 @@ def get_extra_css(outer_bg: str, icon_font_url: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("input_path", type=Path, help="path for the input HTML file.")
-    parser.add_argument("output_path", type=Path, help="pth for the output PNG file.")
+    parser.add_argument("output_path", type=Path, help="path for the output PNG file.")
     parser.add_argument("--title", default="", help="title for the window.")
     parser.add_argument("--icon", default="", help="file icon glyph for the titlebar.")
     parser.add_argument("--icon-color", default="", help="hex for the icon color.")
     parser.add_argument("--background", default="#A5A6F6", help="hex for background.")
-    parser.add_argument("--font", default=(Path(__file__).parent.parent / "SymbolsNerdFontMono-Regular.ttf"), help="font to be used.")
+    parser.add_argument("--font", default="", help="font family for the code window; empty means monospace.")
     args = parser.parse_args()
 
     input_path: Path = args.input_path.expanduser()
     output_path: Path = args.output_path.expanduser()
 
     url = input_path.resolve().as_uri()
-    font_url = Path(args.font).expanduser().resolve().as_uri()
+
+    icon_font_url = (Path(__file__).resolve().parent.parent / "SymbolsNerdFontMono-Regular.ttf").as_uri()
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(device_scale_factor=SCALE)
 
         page.goto(url)
-        page.add_style_tag(content=get_extra_css(args.background, font_url))
+        page.add_style_tag(content=get_extra_css(args.background, icon_font_url, args.font))
 
         page.evaluate(
             """
@@ -219,6 +234,10 @@ def main() -> int:
             """,
             {"title": args.title, "icon": args.icon, "iconColor": args.icon_color},
         )
+
+        # the icon font is loaded async, wait for it so the glyph is not
+        # screenshotted while the fallback font is still showing
+        page.evaluate("document.fonts.ready")
 
         stage_element = page.locator("#stage")
         stage_element.screenshot(path=str(output_path))
