@@ -9,6 +9,12 @@ local function assert_eq(actual, expected)
 	end
 end
 
+local function assert_match(actual, pattern)
+	if type(actual) ~= "string" or not actual:find(pattern, 1, true) then
+		error("failed: expected " .. tostring(actual) .. " to contain " .. pattern)
+	end
+end
+
 local function with_mocks(run)
 	local orig_exec = vim.fn.executable
 	local orig_has = vim.fn.has
@@ -33,7 +39,7 @@ local function with_mocks(run)
 	end
 
 	vim.system = function()
-		return { wait = function() return { code = 0, stderr = "" } end }
+		return { wait = function() return { code = 0, stdout = "", stderr = "" } end }
 	end
 
 	local ctx = {
@@ -131,6 +137,104 @@ with_mocks(function(ctx)
 	assert_eq(err, nil)
 	assert_eq(called[1], "osascript")
 	assert_eq(called[#called], "/tmp/test image.png")
+end)
+
+with_mocks(function(ctx)
+	ctx.set_is_wsl(true)
+	ctx.set_executable("powershell.exe", true)
+	ctx.set_executable("xclip", true)
+	assert_eq(clipboard.detect_provider(), "wsl")
+end)
+
+-- interop off still selects wsl, so copy_image can explain why it fails instead
+-- of quietly copying into a linux clipboard the user is not pasting from
+with_mocks(function(ctx)
+	ctx.set_is_wsl(true)
+	ctx.set_executable("xclip", true)
+	assert_eq(clipboard.detect_provider(), "wsl")
+end)
+
+with_mocks(function(ctx)
+	ctx.set_has("win32", true)
+	ctx.set_executable("powershell.exe", true)
+	ctx.set_executable("xclip", true)
+	assert_eq(clipboard.detect_provider(), "windows")
+end)
+
+with_mocks(function(ctx)
+	ctx.set_is_wsl(true)
+	ctx.set_executable("powershell.exe", false)
+
+	local called = false
+	ctx.set_system(function()
+		called = true
+		return { wait = function() return { code = 0, stdout = "", stderr = "" } end }
+	end)
+
+	local ok, err = clipboard.copy_image("/tmp/test.png", "wsl")
+	assert_eq(ok, false)
+	assert_eq(called, false)
+	assert_match(err, "powershell.exe not found")
+end)
+
+with_mocks(function(ctx)
+	ctx.set_is_wsl(true)
+	ctx.set_executable("powershell.exe", true)
+
+	local calls = {}
+	ctx.set_system(function(cmd)
+		table.insert(calls, cmd)
+		if cmd[1] == "wslpath" then
+			return {
+				wait = function()
+					return { code = 0, stdout = "C:\\tmp\\it's.png\n", stderr = "" }
+				end,
+			}
+		end
+		return { wait = function() return { code = 0, stdout = "", stderr = "" } end }
+	end)
+
+	local ok, err = clipboard.copy_image("/tmp/it's.png", "wsl")
+	assert_eq(ok, true)
+	assert_eq(err, nil)
+	assert_eq(#calls, 2)
+	assert_eq(calls[1][1], "wslpath")
+	assert_eq(calls[1][2], "-w")
+	assert_eq(calls[1][3], "/tmp/it's.png")
+	assert_eq(calls[2][1], "powershell.exe")
+	-- trailing newline stripped and the single quote escaped for powershell
+	assert_match(calls[2][4], "FromFile('C:\\tmp\\it''s.png')")
+end)
+
+with_mocks(function(ctx)
+	ctx.set_is_wsl(true)
+	ctx.set_executable("powershell.exe", true)
+
+	ctx.set_system(function(cmd)
+		if cmd[1] == "wslpath" then
+			return {
+				wait = function()
+					return { code = 1, stdout = "", stderr = "not a valid path" }
+				end,
+			}
+		end
+		error("powershell.exe should not run when wslpath fails")
+	end)
+
+	local ok, err = clipboard.copy_image("/tmp/test.png", "wsl")
+	assert_eq(ok, false)
+	assert_match(err, "wslpath failed: not a valid path")
+end)
+
+-- xclip forks into the background; a timeout means it took the selection
+with_mocks(function(ctx)
+	ctx.set_system(function()
+		return { wait = function() return { code = 137, signal = 9, stderr = "" } end }
+	end)
+
+	local ok, err = clipboard.copy_image("/tmp/test.png", "x11")
+	assert_eq(ok, true)
+	assert_eq(err, nil)
 end)
 
 print("clipboard_spec.lua: ok")
