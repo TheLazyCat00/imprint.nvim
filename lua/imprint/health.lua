@@ -20,6 +20,10 @@ local function check_python()
 		"import sys; print('.'.join(map(str, sys.version_info[:3])))",
 	})
 	local version = out[1]
+	if not version then
+		health.warn("could not determine python3 version")
+		return
+	end
 	local major, minor = version:match("^(%d+)%.(%d+)")
 	major, minor = tonumber(major), tonumber(minor)
 	if not major or not minor then
@@ -44,11 +48,15 @@ end
 
 local function check_optional()
 	local provider = clipboard.detect_provider()
-	if provider then
+	if provider == "wsl" and not clipboard.has_windows_interop() then
+		health.error(
+			"clipboard provider selected: wsl, but powershell.exe was not found "
+			.. "(Windows interop is disabled; enable it in /etc/wsl.conf)")
+	elseif provider then
 		health.ok("clipboard provider selected: " .. provider)
 	else
 		health.warn(
-		"no clipboard provider found (optional: osascript on macOS, wl-copy on Wayland, xclip on X11)")
+		"no clipboard provider found (optional: osascript on macOS, powershell.exe on Windows/WSL, wl-copy on Wayland, xclip on X11)")
 	end
 
 	local ok_devicons = pcall(require, "nvim-web-devicons")

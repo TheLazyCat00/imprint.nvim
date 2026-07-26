@@ -39,6 +39,13 @@ DEPENDENCIES                                                         *imprint-de
   - wl-copy (Wayland)
   - osascript (macOS)
   - xclip (X11)
+  - powershell.exe (Windows and WSL)
+
+Under WSL the image goes to the Windows clipboard via powershell.exe, which
+requires Windows interop (interop.enabled in /etc/wsl.conf). With interop
+disabled the copy reports an error instead of falling back to wl-copy or
+xclip, because those write to a Linux clipboard that is most likely not the
+one you paste from.
 
 CHECKHEALTH                                                          *imprint-health*
 

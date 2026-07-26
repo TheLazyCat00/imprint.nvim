@@ -39,6 +39,11 @@ local function run_cmd(cmd, stdin, timeout)
 	if result.code == 0 then
 		return true, nil
 	end
+	-- proc:wait(timeout) kills the process with SIGKILL once the timeout expires
+	-- instead of returning nil, so surface that as a timeout too.
+	if timeout ~= nil and result.signal == 9 then
+		return nil, "timeout"
+	end
 	local reason = result.stderr
 	if not reason or reason == "" then
 		reason = "exit code " .. tostring(result.code)
@@ -46,21 +51,68 @@ local function run_cmd(cmd, stdin, timeout)
 	return false, reason
 end
 
+local function capture_cmd(cmd)
+	local result = vim.system(cmd, { text = true }):wait()
+	if result == nil then
+		return nil, "timeout"
+	end
+	if result.code ~= 0 then
+		local reason = result.stderr
+		if not reason or reason == "" then
+			reason = "exit code " .. tostring(result.code)
+		end
+		return nil, reason
+	end
+	return result.stdout or "", nil
+end
+
+-- single quotes are the escape character inside a powershell single-quoted string
+local function ps_quote(value)
+	return (value:gsub("'", "''"))
+end
+
+local function powershell_copy_cmd(path)
+	return {
+		"powershell.exe",
+		"-NoProfile",
+		"-Command",
+		string.format(
+			"Add-Type -AssemblyName System.Windows.Forms,System.Drawing; "
+			.. "[System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('%s'))",
+			ps_quote(path)
+		),
+	}
+end
+
 local function env_has(name)
 	local value = vim.env[name]
 	return value ~= nil and value ~= ""
+end
+
+local function is_wsl()
+	return vim.fn.has("wsl") == 1
+		or env_has("WSL_DISTRO_NAME")
+		or env_has("WSL_INTEROP")
+end
+
+-- WSL reaches the Windows clipboard through Windows interop, which can be
+-- turned off (`interop.enabled=false` in /etc/wsl.conf). powershell.exe is then
+-- not executable at all.
+function M.has_windows_interop()
+	return vim.fn.executable("powershell.exe") == 1
 end
 
 function M.detect_provider()
 	if vim.fn.has("mac") == 1 and vim.fn.executable("osascript") == 1 then
 		return "macos"
 	end
-
-	local is_wsl = vim.fn.has("wsl") == 1
-		or env_has("WSL_DISTRO_NAME")
-		or env_has("WSL_INTEROP")
-
-	if is_wsl then
+	if (vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1) and vim.fn.executable("powershell.exe") == 1 then
+		return "windows"
+	end
+	-- returned even when interop is off: copy_image then reports what is wrong
+	-- instead of silently falling back to a linux backend that cannot reach the
+	-- Windows clipboard the user is actually pasting into.
+	if is_wsl() then
 		return "wsl"
 	end
 	if env_has("WAYLAND_DISPLAY") and vim.fn.executable("wl-copy") == 1 then
@@ -68,9 +120,6 @@ function M.detect_provider()
 	end
 	if vim.fn.executable("xclip") == 1 then
 		return "x11"
-	end
-	if (vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1) and vim.fn.executable("powershell.exe") == 1 then
-		return "windows"
 	end
 	return nil
 end
@@ -115,34 +164,24 @@ function M.copy_image(image_path, provider)
 		if ok then return true, nil end
 		return false, "osascript failed: " .. err
 	elseif provider == "windows" then
-		local cmd = {
-			"powershell.exe",
-			"-NoProfile",
-			"-Command",
-			string.format(
-				"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('%s'))",
-				image_path
-			),
-		}
-		local ok, err = run_cmd(cmd)
+		local ok, err = run_cmd(powershell_copy_cmd(image_path))
 		if ok then return true, nil end
 		return false, "powershell failed: " .. err
 	elseif provider == "wsl" then
-		local ps_exe = "powershell.exe"
-		local win_path = vim.fn.system("wslpath -w " .. vim.fn.shellescape(image_path)):gsub("\n", "")
-		if not win_path or win_path == "" then
+		if not M.has_windows_interop() then
+			return false,
+				"powershell.exe not found: Windows interop is disabled in this WSL distro, "
+				.. "so the Windows clipboard cannot be reached (enable interop in /etc/wsl.conf)"
+		end
+		local out, path_err = capture_cmd({ "wslpath", "-w", image_path })
+		if not out then
+			return false, "wslpath failed: " .. path_err
+		end
+		local win_path = vim.trim(out)
+		if win_path == "" then
 			return false, "wslpath failed to convert path"
 		end
-		local cmd = {
-			ps_exe,
-			"-NoProfile",
-			"-Command",
-			string.format(
-				"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('%s'))",
-				win_path
-			),
-		}
-		local ok, err = run_cmd(cmd)
+		local ok, err = run_cmd(powershell_copy_cmd(win_path))
 		if ok then return true, nil end
 		return false, "powershell (wsl) failed: " .. err
 	end

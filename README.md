@@ -56,7 +56,10 @@ use {
     - `xclip` (X11)
     - `wl-copy` (Wayland)
     - `osascript` (macOS)
-    - `powershell` (Windows)
+    - `powershell.exe` (Windows and WSL)
+
+> [!NOTE]
+> Under WSL the image is copied into the **Windows** clipboard through `powershell.exe`. This needs Windows interop, which is on by default but can be turned off with `interop.enabled=false` in `/etc/wsl.conf`. With interop off the copy fails with an explicit error rather than falling back to `wl-copy` / `xclip`, since those write to a Linux clipboard you are most likely not pasting from. Run `:checkhealth imprint` to see which backend was picked.
 
 ### how it works
 
